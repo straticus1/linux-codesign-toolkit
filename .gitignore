@@ -1,0 +1,50 @@
+# Build artifacts
+codesign-toolkit
+osslsigncode/
+*.o
+*.a
+*.so
+*.dylib
+
+# Certificates and keys (for security)
+certs/
+*.pem
+*.der
+*.p12
+*.pfx
+*.jks
+*.keystore
+*.spc
+*.csr
+
+# Test and example files
+tests/test-files/
+examples/example-files/
+*.exe
+*.jar
+*.air
+*.class
+
+# Temporary files
+*.tmp
+*.temp
+*~
+.DS_Store
+Thumbs.db
+
+# IDE files
+.vscode/
+.idea/
+*.swp
+*.swo
+
+# Log files
+*.log
+
+# CMake build directories
+build/
+cmake-build-*/
+
+# Package files
+*.tar.gz
+*.zip
