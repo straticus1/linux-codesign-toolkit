@@ -1,4 +1,4 @@
-# Linux Code Signing Toolkit 1.1 - Project Summary
+# Linux Code Signing Toolkit 1.2 - Project Summary
 
 **Designed and Developed by:** Ryan Coleman <coleman.ryan@gmail.com>
 
@@ -14,21 +14,23 @@ We've successfully created a comprehensive **Linux Code Signing Toolkit** that a
 ## Project Structure
 
 ```
-linux-codesign-toolkit-1.1/
+linux-codesign-toolkit-1.2/
 ├── codesign-toolkit.sh          # Main wrapper script
 ├── Makefile                     # Build and installation system
 ├── README.md                    # Project documentation
 ├── .gitignore                   # Git ignore rules
 ├── PROJECT_SUMMARY.md           # This file
 ├── scripts/
-│   └── create-test-certificates.sh  # Certificate generation
+│   ├── create-test-certificates.sh  # Certificate generation
+│   └── setup-jira.sh               # JIRA setup script (NEW)
 ├── tests/
 │   └── run-tests.sh             # Test suite
 ├── examples/
 │   └── example-usage.sh         # Usage examples
 └── docs/
     ├── CODE_SIGNING_GUIDE.md    # Comprehensive guide
-    └── TIMESTAMP_GUIDE.md       # Timestamp server guide (NEW)
+    ├── TIMESTAMP_GUIDE.md       # Timestamp server guide
+    └── JIRA_INTEGRATION_GUIDE.md # JIRA integration guide (NEW)
 ```
 
 ## Key Features
@@ -42,7 +44,8 @@ linux-codesign-toolkit-1.1/
 ### 🛠️ Complete Toolset
 - **Sign**: Add digital signatures to files
 - **Verify**: Validate existing signatures
-- **Timestamp**: Verify timestamps in signed files (NEW in 1.1)
+- **Timestamp**: Verify timestamps in signed files
+- **JIRA**: Create and update JIRA tickets for audit trails (NEW in 1.2)
 - **Unsign**: Remove signatures (Windows binaries)
 - **Resign**: Replace signatures with new certificates
 
@@ -97,11 +100,23 @@ make
 ./codesign-toolkit verify -in your-app-signed.air
 ```
 
-### 5. Check Timestamps (NEW in 1.1)
+### 5. Check Timestamps
 ```bash
 ./codesign-toolkit timestamp -in your-app-signed.exe
 ./codesign-toolkit timestamp -in your-app-signed.jar
 ./codesign-toolkit timestamp -in your-app-signed.air
+```
+
+### 6. JIRA Integration (NEW in 1.2)
+```bash
+# Setup JIRA integration
+./scripts/setup-jira.sh --configure
+
+# Create JIRA ticket
+./codesign-toolkit jira -create -project PROJ -type Task -summary "Code signing completed"
+
+# Update JIRA ticket
+./codesign-toolkit jira -update -issue PROJ-123 -comment "Verification completed"
 ```
 
 ## Technical Implementation
@@ -228,7 +243,8 @@ sudo make install
 ### Resources
 - **README.md**: Quick start and basic usage
 - **docs/CODE_SIGNING_GUIDE.md**: Comprehensive guide
-- **docs/TIMESTAMP_GUIDE.md**: Timestamp server guide (NEW in 1.1)
+- **docs/TIMESTAMP_GUIDE.md**: Timestamp server guide
+- **docs/JIRA_INTEGRATION_GUIDE.md**: JIRA integration guide (NEW in 1.2)
 - **examples/**: Working examples
 - **tests/**: Test suite and validation
 
@@ -252,9 +268,29 @@ sudo make install
 - Better error handling for timestamp server failures
 - More detailed timestamp verification output
 
+## What's New in Version 1.2
+
+### JIRA Integration
+- **Complete JIRA REST API integration**: Create and manage tickets directly from the toolkit
+- **Automatic audit trails**: All signing operations automatically logged to JIRA
+- **Manual ticket management**: Create, update, and comment on tickets manually
+- **Compliance support**: Built-in support for regulatory and security compliance requirements
+
+### New Features
+- **Interactive JIRA setup**: Easy configuration with `setup-jira.sh` script
+- **Secure configuration**: API tokens and credentials stored securely
+- **Flexible ticket types**: Support for Tasks, Bugs, Stories, and custom issue types
+- **CI/CD integration**: Environment variable support for automated pipelines
+
+### Documentation & Tooling
+- **Comprehensive JIRA guide**: New JIRA_INTEGRATION_GUIDE.md with examples
+- **Setup automation**: Interactive script for easy JIRA configuration
+- **Connection testing**: Built-in tools to verify JIRA connectivity
+- **Best practices**: Security and compliance guidance
+
 ## Conclusion
 
-The Linux Code Signing Toolkit 1.0 provides a complete solution for code signing across multiple platforms. It combines the power of established tools like osslsigncode with custom implementations for specialized formats, all wrapped in a user-friendly interface.
+The Linux Code Signing Toolkit 1.2 provides a complete solution for code signing across multiple platforms.
 
 Whether you're a developer needing to sign applications, a DevOps engineer automating deployment processes, or a security professional managing digital certificates, this toolkit provides the tools and flexibility you need.
 

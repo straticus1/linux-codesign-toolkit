@@ -1,14 +1,15 @@
 #!/bin/bash
 
-# Linux Code Signing Toolkit 1.1
+# Linux Code Signing Toolkit 1.2
 # A comprehensive toolkit for code signing Windows binaries, Java applications, AIR files, and Apple packages
+# Includes JIRA integration for ticket management and audit trails
 #
 # Designed and Developed by: Ryan Coleman <coleman.ryan@gmail.com>
 # Copyright (c) 2024 Ryan Coleman. All rights reserved.
 
 set -e
 
-VERSION="1.1"
+VERSION="1.2"
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 
 # Colors for output
@@ -80,6 +81,11 @@ check_dependencies() {
         log_warning "xar not found - Apple package signing will be limited"
     fi
     
+    # Check for JIRA integration tools
+    if ! command_exists curl; then
+        log_warning "curl not found - JIRA integration will be limited"
+    fi
+    
     if [ ${#missing_deps[@]} -ne 0 ]; then
         log_error "Missing dependencies: ${missing_deps[*]}"
         log_info "Please install missing dependencies and run 'make deps' to build osslsigncode"
@@ -133,8 +139,12 @@ sign_windows() {
     
     if [ $? -eq 0 ]; then
         log_success "Windows binary signed successfully: $output_file"
+        # Log successful operation to JIRA
+        log_signing_operation "sign" "windows" "$input_file" "$output_file" "success"
     else
         log_error "Failed to sign Windows binary"
+        # Log failed operation to JIRA
+        log_signing_operation "sign" "windows" "$input_file" "$output_file" "failure" "osslsigncode command failed"
         exit 1
     fi
 }
@@ -203,8 +213,12 @@ sign_java() {
     
     if [ $? -eq 0 ]; then
         log_success "Java JAR signed successfully: $output_file"
+        # Log successful operation to JIRA
+        log_signing_operation "sign" "java" "$input_file" "$output_file" "success"
     else
         log_error "Failed to sign Java JAR"
+        # Log failed operation to JIRA
+        log_signing_operation "sign" "java" "$input_file" "$output_file" "failure" "jarsigner command failed"
         exit 1
     fi
 }
@@ -860,6 +874,202 @@ verify_timestamp() {
     esac
 }
 
+# JIRA Integration Functions
+create_jira_ticket() {
+    local jira_url="$1"
+    local jira_user="$2"
+    local jira_token="$3"
+    local project_key="$4"
+    local issue_type="$5"
+    local summary="$6"
+    local description="$7"
+    local priority="$8"
+    
+    log_info "Creating JIRA ticket in project: $project_key"
+    
+    # Create JSON payload for JIRA ticket
+    local json_payload=$(cat << EOF
+{
+    "fields": {
+        "project": {
+            "key": "$project_key"
+        },
+        "summary": "$summary",
+        "description": "$description",
+        "issuetype": {
+            "name": "$issue_type"
+        },
+        "priority": {
+            "name": "$priority"
+        }
+    }
+}
+EOF
+)
+    
+    # Create JIRA ticket using REST API
+    local response=$(curl -s -w "%{http_code}" -X POST \
+        -H "Content-Type: application/json" \
+        -H "Authorization: Basic $(echo -n "$jira_user:$jira_token" | base64)" \
+        -d "$json_payload" \
+        "$jira_url/rest/api/2/issue")
+    
+    local http_code="${response: -3}"
+    local response_body="${response%???}"
+    
+    if [ "$http_code" -eq 201 ]; then
+        # Extract issue key from response
+        local issue_key=$(echo "$response_body" | grep -o '"key":"[^"]*"' | cut -d'"' -f4)
+        log_success "JIRA ticket created successfully: $issue_key"
+        echo "$issue_key"
+    else
+        log_error "Failed to create JIRA ticket. HTTP Code: $http_code"
+        log_error "Response: $response_body"
+        return 1
+    fi
+}
+
+update_jira_ticket() {
+    local jira_url="$1"
+    local jira_user="$2"
+    local jira_token="$3"
+    local issue_key="$4"
+    local comment="$5"
+    local status="$6"
+    
+    log_info "Updating JIRA ticket: $issue_key"
+    
+    # Add comment if provided
+    if [ -n "$comment" ]; then
+        local comment_payload=$(cat << EOF
+{
+    "body": "$comment"
+}
+EOF
+)
+        
+        local comment_response=$(curl -s -w "%{http_code}" -X POST \
+            -H "Content-Type: application/json" \
+            -H "Authorization: Basic $(echo -n "$jira_user:$jira_token" | base64)" \
+            -d "$comment_payload" \
+            "$jira_url/rest/api/2/issue/$issue_key/comment")
+        
+        local comment_http_code="${comment_response: -3}"
+        if [ "$comment_http_code" -eq 201 ]; then
+            log_success "Comment added to JIRA ticket: $issue_key"
+        else
+            log_warning "Failed to add comment to JIRA ticket"
+        fi
+    fi
+    
+    # Update status if provided
+    if [ -n "$status" ]; then
+        # Get available transitions
+        local transitions_response=$(curl -s -X GET \
+            -H "Authorization: Basic $(echo -n "$jira_user:$jira_token" | base64)" \
+            "$jira_url/rest/api/2/issue/$issue_key/transitions")
+        
+        # Find transition ID for the target status
+        local transition_id=$(echo "$transitions_response" | grep -o "\"id\":\"[0-9]*\".*\"name\":\"$status\"" | grep -o "\"id\":\"[0-9]*\"" | cut -d'"' -f4 | head -1)
+        
+        if [ -n "$transition_id" ]; then
+            local status_payload=$(cat << EOF
+{
+    "transition": {
+        "id": "$transition_id"
+    }
+}
+EOF
+)
+            
+            local status_response=$(curl -s -w "%{http_code}" -X POST \
+                -H "Content-Type: application/json" \
+                -H "Authorization: Basic $(echo -n "$jira_user:$jira_token" | base64)" \
+                -d "$status_payload" \
+                "$jira_url/rest/api/2/issue/$issue_key/transitions")
+            
+            local status_http_code="${status_response: -3}"
+            if [ "$status_http_code" -eq 204 ]; then
+                log_success "Status updated to '$status' for JIRA ticket: $issue_key"
+            else
+                log_warning "Failed to update status for JIRA ticket"
+            fi
+        else
+            log_warning "Status '$status' not found in available transitions"
+        fi
+    fi
+}
+
+log_signing_operation() {
+    local operation="$1"
+    local file_type="$2"
+    local input_file="$3"
+    local output_file="$4"
+    local status="$5"
+    local error_message="$6"
+    
+    # Check if JIRA integration is enabled
+    if [ -z "$JIRA_URL" ] || [ -z "$JIRA_USER" ] || [ -z "$JIRA_TOKEN" ] || [ -z "$JIRA_PROJECT" ]; then
+        return 0
+    fi
+    
+    local summary=""
+    local description=""
+    local issue_type="Task"
+    local priority="Medium"
+    
+    case "$status" in
+        success)
+            summary="Code Signing Success: $operation completed for $file_type"
+            description="**Operation:** $operation
+**File Type:** $file_type
+**Input File:** $input_file
+**Output File:** $output_file
+**Status:** Success
+**Timestamp:** $(date -u +"%Y-%m-%d %H:%M:%S UTC")
+**User:** $(whoami)
+**Host:** $(hostname)"
+            issue_type="Task"
+            priority="Low"
+            ;;
+        failure)
+            summary="Code Signing Failure: $operation failed for $file_type"
+            description="**Operation:** $operation
+**File Type:** $file_type
+**Input File:** $input_file
+**Output File:** $output_file
+**Status:** Failed
+**Error:** $error_message
+**Timestamp:** $(date -u +"%Y-%m-%d %H:%M:%S UTC")
+**User:** $(whoami)
+**Host:** $(hostname)"
+            issue_type="Bug"
+            priority="High"
+            ;;
+        *)
+            summary="Code Signing Operation: $operation for $file_type"
+            description="**Operation:** $operation
+**File Type:** $file_type
+**Input File:** $input_file
+**Output File:** $output_file
+**Status:** $status
+**Timestamp:** $(date -u +"%Y-%m-%d %H:%M:%S UTC")
+**User:** $(whoami)
+**Host:** $(hostname)"
+            ;;
+    esac
+    
+    # Create JIRA ticket
+    local issue_key=$(create_jira_ticket "$JIRA_URL" "$JIRA_USER" "$JIRA_TOKEN" "$JIRA_PROJECT" "$issue_type" "$summary" "$description" "$priority")
+    
+    if [ $? -eq 0 ] && [ -n "$issue_key" ]; then
+        log_info "JIRA ticket created: $issue_key"
+        echo "$issue_key"
+    else
+        log_warning "Failed to create JIRA ticket for logging"
+    fi
+}
+
 # Main command processing
 process_sign() {
     local type=""
@@ -1122,6 +1332,105 @@ process_timestamp() {
     verify_timestamp "$input_file"
 }
 
+process_jira() {
+    local action=""
+    local project_key=""
+    local issue_type=""
+    local summary=""
+    local description=""
+    local priority=""
+    local issue_key=""
+    local comment=""
+    local status=""
+    
+    # Parse arguments
+    while [[ $# -gt 0 ]]; do
+        case $1 in
+            -create)
+                action="create"
+                shift
+                ;;
+            -update)
+                action="update"
+                shift
+                ;;
+            -project)
+                project_key="$2"
+                shift 2
+                ;;
+            -type)
+                issue_type="$2"
+                shift 2
+                ;;
+            -summary)
+                summary="$2"
+                shift 2
+                ;;
+            -description)
+                description="$2"
+                shift 2
+                ;;
+            -priority)
+                priority="$2"
+                shift 2
+                ;;
+            -issue)
+                issue_key="$2"
+                shift 2
+                ;;
+            -comment)
+                comment="$2"
+                shift 2
+                ;;
+            -status)
+                status="$2"
+                shift 2
+                ;;
+            *)
+                log_error "Unknown option: $1"
+                exit 1
+                ;;
+        esac
+    done
+    
+    # Check if JIRA environment variables are set
+    if [ -z "$JIRA_URL" ] || [ -z "$JIRA_USER" ] || [ -z "$JIRA_TOKEN" ]; then
+        log_error "JIRA environment variables not set. Please set:"
+        log_error "  JIRA_URL - Your JIRA instance URL (e.g., https://yourcompany.atlassian.net)"
+        log_error "  JIRA_USER - Your JIRA username or email"
+        log_error "  JIRA_TOKEN - Your JIRA API token"
+        exit 1
+    fi
+    
+    case "$action" in
+        create)
+            if [ -z "$project_key" ] || [ -z "$summary" ]; then
+                log_error "Project key (-project) and summary (-summary) are required for creating tickets"
+                exit 1
+            fi
+            
+            # Set defaults
+            [ -z "$issue_type" ] && issue_type="Task"
+            [ -z "$priority" ] && priority="Medium"
+            [ -z "$description" ] && description="Code signing operation ticket"
+            
+            create_jira_ticket "$JIRA_URL" "$JIRA_USER" "$JIRA_TOKEN" "$project_key" "$issue_type" "$summary" "$description" "$priority"
+            ;;
+        update)
+            if [ -z "$issue_key" ]; then
+                log_error "Issue key (-issue) is required for updating tickets"
+                exit 1
+            fi
+            
+            update_jira_ticket "$JIRA_URL" "$JIRA_USER" "$JIRA_TOKEN" "$issue_key" "$comment" "$status"
+            ;;
+        *)
+            log_error "Action is required (-create or -update)"
+            exit 1
+            ;;
+    esac
+}
+
 # Show help
 show_help() {
     cat << EOF
@@ -1135,6 +1444,7 @@ Commands:
   verify   Verify signature of a file
   timestamp Verify timestamp in a signed file
   unsign   Remove signature from a file (Windows binaries only)
+  jira     JIRA integration (create/update tickets)
   help     Show this help message
 
 Sign Command Options:
@@ -1169,6 +1479,18 @@ Unsign Command Options:
 Timestamp Command Options:
   -in <file>             Input file to check for timestamp
 
+JIRA Command Options:
+  -create               Create a new JIRA ticket
+  -update               Update an existing JIRA ticket
+  -project <key>        JIRA project key
+  -type <type>          Issue type (Task, Bug, Story, etc.)
+  -summary <text>       Ticket summary
+  -description <text>   Ticket description
+  -priority <level>     Priority (Low, Medium, High, Critical)
+  -issue <key>          Issue key for updates
+  -comment <text>       Comment to add
+  -status <status>      Status to transition to
+
 Examples:
   # Sign Windows executable
   $0 sign -type windows -cert cert.pem -key key.pem -in app.exe -out app-signed.exe
@@ -1193,6 +1515,12 @@ Examples:
 
   # Check timestamp in signed file
   $0 timestamp -in app-signed.exe
+
+  # Create JIRA ticket for signing operation
+  $0 jira -create -project PROJ -type Task -summary "Code signing completed" -description "Windows app signed successfully"
+
+  # Update JIRA ticket
+  $0 jira -update -issue PROJ-123 -comment "Verification completed" -status "Done"
 EOF
 }
 
@@ -1218,6 +1546,9 @@ main() {
             ;;
         timestamp)
             process_timestamp "$@"
+            ;;
+        jira)
+            process_jira "$@"
             ;;
         unsign)
             process_unsign "$@"

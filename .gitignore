@@ -17,6 +17,9 @@ certs/
 *.spc
 *.csr
 
+# JIRA configuration (contains sensitive API tokens)
+.jira-config
+
 # Test and example files
 tests/test-files/
 examples/example-files/

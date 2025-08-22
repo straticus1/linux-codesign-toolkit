@@ -11,6 +11,8 @@ A comprehensive toolkit for code signing Windows binaries, Java applications, AI
 - **AIR File Signing**: Sign Adobe AIR (.air) files for distribution
 - **Apple Package Signing**: Sign macOS packages (.pkg), iOS apps (.ipa), and macOS apps (.app)
 - **Signature Management**: Sign, unsign, resign, verify, and delete signatures
+- **Timestamp Support**: Add trusted timestamps for long-term signature validity
+- **JIRA Integration**: Create and update JIRA tickets for audit trails and compliance
 - **Cross-Platform**: Works on Linux and macOS
 
 ## Supported Operations
@@ -106,6 +108,12 @@ make
 
 # Check timestamp in signed file
 ./codesign-toolkit timestamp -in app-signed.exe
+
+# Create JIRA ticket for signing operation
+./codesign-toolkit jira -create -project PROJ -type Task -summary "Code signing completed" -description "Windows app signed successfully"
+
+# Update JIRA ticket
+./codesign-toolkit jira -update -issue PROJ-123 -comment "Verification completed" -status "Done"
 
 # Remove signatures
 ./codesign-toolkit unsign -in app-signed.exe -out app-unsigned.exe
