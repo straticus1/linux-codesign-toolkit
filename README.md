@@ -17,7 +17,7 @@ A comprehensive toolkit for code signing Windows binaries, Java applications, AI
 
 ### Windows Binaries (via osslsigncode)
 - Sign executables with Authenticode certificates
-- Add timestamps to signatures
+- Add timestamps to signatures (recommended for long-term validity)
 - Verify existing signatures
 - Remove signatures (where applicable)
 - Resign files with new certificates
@@ -32,12 +32,13 @@ A comprehensive toolkit for code signing Windows binaries, Java applications, AI
 - Sign AIR files for distribution
 - Verify AIR signatures
 - Manage AIR certificates
-- Support for timestamping
+- Support for timestamping (PKCS#7 timestamps)
 
 ### Apple Packages
 - Sign macOS installer packages (.pkg)
 - Sign iOS applications (.ipa)
 - Sign macOS applications (.app)
+- Support for timestamping (where applicable)
 - Support for notarization workflows
 
 ## Prerequisites
@@ -102,6 +103,9 @@ make
 ./codesign-toolkit verify -in app-signed.jar
 ./codesign-toolkit verify -in app-signed.air
 ./codesign-toolkit verify -in app-signed.pkg
+
+# Check timestamp in signed file
+./codesign-toolkit timestamp -in app-signed.exe
 
 # Remove signatures
 ./codesign-toolkit unsign -in app-signed.exe -out app-unsigned.exe

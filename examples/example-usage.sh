@@ -178,9 +178,28 @@ example_verification() {
     log_success "All signatures verified successfully!"
 }
 
-# Example 5: Remove signature (Windows only)
+# Example 5: Check timestamps
+example_timestamp_check() {
+    log_info "Example 5: Checking timestamps"
+    
+    echo "Checking timestamp in Windows executable:"
+    $TOOLKIT timestamp -in "$EXAMPLE_DIR/example-app-signed.exe"
+    echo ""
+    
+    echo "Checking timestamp in Java JAR:"
+    $TOOLKIT timestamp -in "$EXAMPLE_DIR/example-app-signed.jar"
+    echo ""
+    
+    echo "Checking timestamp in AIR file:"
+    $TOOLKIT timestamp -in "$EXAMPLE_DIR/example-app-signed.air"
+    echo ""
+    
+    log_success "All timestamp checks completed!"
+}
+
+# Example 6: Remove signature (Windows only)
 example_unsigning() {
-    log_info "Example 5: Removing signature from Windows executable"
+    log_info "Example 6: Removing signature from Windows executable"
     
     echo "Command:"
     echo "  $TOOLKIT unsign \\"
@@ -220,6 +239,7 @@ main() {
     example_java_signing
     example_air_signing
     example_verification
+    example_timestamp_check
     example_unsigning
     
     echo ""

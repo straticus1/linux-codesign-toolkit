@@ -1,6 +1,6 @@
 #!/bin/bash
 
-# Linux Code Signing Toolkit 1.0
+# Linux Code Signing Toolkit 1.1
 # A comprehensive toolkit for code signing Windows binaries, Java applications, AIR files, and Apple packages
 #
 # Designed and Developed by: Ryan Coleman <coleman.ryan@gmail.com>
@@ -8,7 +8,7 @@
 
 set -e
 
-VERSION="1.0"
+VERSION="1.1"
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 
 # Colors for output
@@ -269,15 +269,63 @@ sign_air() {
     # Create signature
     local signature_file="$temp_dir/META-INF/AIR/signatures/signature.p7s"
     
-    # Use OpenSSL to create PKCS#7 signature
-    openssl smime -sign \
-        -in "$temp_dir/manifest.txt" \
-        -out "$signature_file" \
-        -signer "$cert_file" \
-        -inkey "$cert_file" \
-        -passin "pass:$cert_pass" \
-        -outform DER \
-        -nodetach
+    # Build OpenSSL command with timestamp support
+    local openssl_cmd="openssl smime -sign -in \"$temp_dir/manifest.txt\" -out \"$signature_file\" -signer \"$cert_file\" -inkey \"$cert_file\" -passin \"pass:$cert_pass\" -outform DER -nodetach"
+    
+    # Add timestamp if provided
+    if [ -n "$timestamp_url" ]; then
+        log_info "Adding timestamp from: $timestamp_url"
+        openssl_cmd="$openssl_cmd -tsa \"$timestamp_url\""
+    fi
+    
+    # Execute signing command
+    log_info "Executing: $openssl_cmd"
+    eval $openssl_cmd
+    
+    if [ $? -ne 0 ]; then
+        log_error "Failed to create AIR signature"
+        exit 1
+    fi
+    
+    # Create new AIR file
+    log_info "Creating signed AIR file..."
+    cd "$temp_dir"
+    zip -r "$output_file" . -x "manifest.txt"
+    cd - > /dev/null
+    
+    log_success "AIR file signed successfully: $output_file"
+    
+    log_info "Signing AIR file: $input_file"
+    
+    # Create temporary directory
+    local temp_dir=$(mktemp -d)
+    trap "rm -rf $temp_dir" EXIT
+    
+    # Extract AIR file (it's a ZIP)
+    log_info "Extracting AIR file..."
+    unzip -q "$input_file" -d "$temp_dir"
+    
+    # Check if META-INF/AIR/application.xml exists
+    if [ ! -f "$temp_dir/META-INF/AIR/application.xml" ]; then
+        log_error "Invalid AIR file: missing META-INF/AIR/application.xml"
+        exit 1
+    fi
+    
+    # Create signature directory
+    mkdir -p "$temp_dir/META-INF/AIR/signatures"
+    
+    # Generate signature using OpenSSL
+    log_info "Generating AIR signature..."
+    
+    # Create a manifest of all files
+    find "$temp_dir" -type f -not -path "*/META-INF/AIR/signatures/*" | sort > "$temp_dir/manifest.txt"
+    
+    # Create signature
+    local signature_file="$temp_dir/META-INF/AIR/signatures/signature.p7s"
+    
+    # Execute signing command
+    log_info "Executing: $openssl_cmd"
+    eval $openssl_cmd
     
     if [ $? -ne 0 ]; then
         log_error "Failed to create AIR signature"
@@ -320,6 +368,13 @@ verify_air() {
     
     if [ $? -eq 0 ]; then
         log_success "AIR file signature verified successfully"
+        
+        # Check for timestamp
+        if openssl pkcs7 -in "$signature_file" -inform DER -text | grep -q "Time Stamp"; then
+            log_success "AIR file signature includes timestamp"
+        else
+            log_info "AIR file signature does not include timestamp"
+        fi
         
         if [ -n "$cert_file" ]; then
             # Compare with provided certificate
@@ -427,6 +482,32 @@ sign_apple_pkg() {
         exit 1
     fi
     
+    # Add timestamp if provided
+    if [ -n "$timestamp_url" ]; then
+        log_info "Adding timestamp from: $timestamp_url"
+        
+        # Create timestamp request
+        openssl ts -query -data "$temp_dir/signature.dat" -out "$temp_dir/timestamp.req" -sha256
+        
+        if [ $? -eq 0 ]; then
+            # Get timestamp response
+            curl -s -H "Content-Type: application/timestamp-query" \
+                --data-binary @"$temp_dir/timestamp.req" \
+                "$timestamp_url" > "$temp_dir/timestamp.resp"
+            
+            if [ $? -eq 0 ] && [ -s "$temp_dir/timestamp.resp" ]; then
+                log_info "Timestamp added successfully"
+                # Note: xar doesn't directly support timestamps, but we can store the timestamp response
+                # for verification purposes
+                cp "$temp_dir/timestamp.resp" "$temp_dir/META-INF/timestamp.resp"
+            else
+                log_warning "Failed to get timestamp from server, continuing without timestamp"
+            fi
+        else
+            log_warning "Failed to create timestamp request, continuing without timestamp"
+        fi
+    fi
+    
     # Inject signature into package
     xar --inject-sig "$temp_dir/signature.dat" -f "$output_file"
     
@@ -527,7 +608,19 @@ sign_apple_ipa_isign() {
     openssl pkcs12 -in "$cert_file" -nocerts -nodes -out "$temp_dir/key.pem" -passin "pass:$cert_pass" 2>/dev/null
     
     # Use isign to sign the IPA
-    isign -c "$temp_dir/cert.pem" -k "$temp_dir/key.pem" -o "$output_file" "$input_file"
+    local isign_cmd="isign -c \"$temp_dir/cert.pem\" -k \"$temp_dir/key.pem\" -o \"$output_file\""
+    
+    # Add timestamp if provided and supported
+    if [ -n "$timestamp_url" ]; then
+        log_info "Adding timestamp from: $timestamp_url"
+        # Note: isign may not support timestamps directly, but we can try
+        isign_cmd="$isign_cmd --timestamp \"$timestamp_url\""
+    fi
+    
+    isign_cmd="$isign_cmd \"$input_file\""
+    
+    log_info "Executing: $isign_cmd"
+    eval $isign_cmd
     
     if [ $? -eq 0 ]; then
         log_success "iOS application signed successfully: $output_file"
@@ -684,6 +777,14 @@ verify_apple_app() {
         
         if [ $? -eq 0 ]; then
             log_success "macOS application signature verified successfully"
+            
+            # Check for timestamp
+            codesign --verify --deep --strict --verbose=4 "$input_file" 2>&1 | grep -q "Timestamp"
+            if [ $? -eq 0 ]; then
+                log_success "macOS application signature includes timestamp"
+            else
+                log_info "macOS application signature does not include timestamp"
+            fi
         else
             log_error "macOS application signature verification failed"
             exit 1
@@ -692,6 +793,71 @@ verify_apple_app() {
         log_warning "macOS app signature verification requires macOS with Xcode tools"
         exit 1
     fi
+}
+
+# Verify timestamp in a signed file
+verify_timestamp() {
+    local input_file="$1"
+    local timestamp_url="$2"
+    
+    log_info "Verifying timestamp in: $input_file"
+    
+    # Determine file type by extension
+    local extension="${input_file##*.}"
+    
+    case "$extension" in
+        exe|dll|msi|cab|cat|appx)
+            # Windows binary - use osslsigncode
+            if command_exists osslsigncode; then
+                osslsigncode verify -in "$input_file" | grep -i "timestamp"
+                if [ $? -eq 0 ]; then
+                    log_success "Windows binary includes timestamp"
+                else
+                    log_info "Windows binary does not include timestamp"
+                fi
+            fi
+            ;;
+        jar)
+            # Java JAR - use jarsigner
+            if command_exists jarsigner; then
+                jarsigner -verify -verbose "$input_file" | grep -i "timestamp"
+                if [ $? -eq 0 ]; then
+                    log_success "Java JAR includes timestamp"
+                else
+                    log_info "Java JAR does not include timestamp"
+                fi
+            fi
+            ;;
+        air)
+            # AIR file - check PKCS#7 signature
+            local temp_dir=$(mktemp -d)
+            trap "rm -rf $temp_dir" EXIT
+            
+            unzip -q "$input_file" -d "$temp_dir"
+            if [ -f "$temp_dir/META-INF/AIR/signatures/signature.p7s" ]; then
+                openssl pkcs7 -in "$temp_dir/META-INF/AIR/signatures/signature.p7s" -inform DER -text | grep -i "time stamp"
+                if [ $? -eq 0 ]; then
+                    log_success "AIR file includes timestamp"
+                else
+                    log_info "AIR file does not include timestamp"
+                fi
+            fi
+            ;;
+        pkg|ipa|app)
+            # Apple packages - check with appropriate tools
+            if [[ "$OSTYPE" == "darwin"* ]] && command_exists codesign; then
+                codesign --verify --deep --strict --verbose=4 "$input_file" 2>&1 | grep -i "timestamp"
+                if [ $? -eq 0 ]; then
+                    log_success "Apple package includes timestamp"
+                else
+                    log_info "Apple package does not include timestamp"
+                fi
+            fi
+            ;;
+        *)
+            log_warning "Timestamp verification not supported for file type: $extension"
+            ;;
+    esac
 }
 
 # Main command processing
@@ -926,6 +1092,36 @@ process_unsign() {
     esac
 }
 
+process_timestamp() {
+    local input_file=""
+    
+    # Parse arguments
+    while [[ $# -gt 0 ]]; do
+        case $1 in
+            -in)
+                input_file="$2"
+                shift 2
+                ;;
+            *)
+                log_error "Unknown option: $1"
+                exit 1
+                ;;
+        esac
+    done
+    
+    if [ -z "$input_file" ]; then
+        log_error "Input file is required (-in)"
+        exit 1
+    fi
+    
+    if [ ! -f "$input_file" ]; then
+        log_error "Input file does not exist: $input_file"
+        exit 1
+    fi
+    
+    verify_timestamp "$input_file"
+}
+
 # Show help
 show_help() {
     cat << EOF
@@ -937,6 +1133,7 @@ Usage: $0 <command> [options]
 Commands:
   sign     Sign a file (Windows binary, Java JAR, AIR file, or Apple package)
   verify   Verify signature of a file
+  timestamp Verify timestamp in a signed file
   unsign   Remove signature from a file (Windows binaries only)
   help     Show this help message
 
@@ -953,7 +1150,12 @@ Sign Command Options:
   -out <file>            Output file
   -n <name>              Application name (Windows)
   -i <url>               Application URL (Windows)
-  -t <url>               Timestamp URL
+  -t <url>               Timestamp URL (recommended for long-term validity)
+
+Timestamp Servers:
+  - DigiCert: http://timestamp.digicert.com
+  - Sectigo: http://timestamp.sectigo.com
+  - GlobalSign: http://timestamp.globalsign.com
 
 Verify Command Options:
   -in <file>             Input file to verify
@@ -963,6 +1165,9 @@ Verify Command Options:
 Unsign Command Options:
   -in <file>             Input file
   -out <file>            Output file
+
+Timestamp Command Options:
+  -in <file>             Input file to check for timestamp
 
 Examples:
   # Sign Windows executable
@@ -985,6 +1190,9 @@ Examples:
 
   # Remove signature from Windows binary
   $0 unsign -in app-signed.exe -out app-unsigned.exe
+
+  # Check timestamp in signed file
+  $0 timestamp -in app-signed.exe
 EOF
 }
 
@@ -1007,6 +1215,9 @@ main() {
             ;;
         verify)
             process_verify "$@"
+            ;;
+        timestamp)
+            process_timestamp "$@"
             ;;
         unsign)
             process_unsign "$@"

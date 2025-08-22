@@ -1,4 +1,4 @@
-# Linux Code Signing Toolkit 1.0 - Project Summary
+# Linux Code Signing Toolkit 1.1 - Project Summary
 
 **Designed and Developed by:** Ryan Coleman <coleman.ryan@gmail.com>
 
@@ -14,7 +14,7 @@ We've successfully created a comprehensive **Linux Code Signing Toolkit** that a
 ## Project Structure
 
 ```
-linux-codesign-toolkit-1.0/
+linux-codesign-toolkit-1.1/
 ├── codesign-toolkit.sh          # Main wrapper script
 ├── Makefile                     # Build and installation system
 ├── README.md                    # Project documentation
@@ -27,7 +27,8 @@ linux-codesign-toolkit-1.0/
 ├── examples/
 │   └── example-usage.sh         # Usage examples
 └── docs/
-    └── CODE_SIGNING_GUIDE.md    # Comprehensive guide
+    ├── CODE_SIGNING_GUIDE.md    # Comprehensive guide
+    └── TIMESTAMP_GUIDE.md       # Timestamp server guide (NEW)
 ```
 
 ## Key Features
@@ -41,6 +42,7 @@ linux-codesign-toolkit-1.0/
 ### 🛠️ Complete Toolset
 - **Sign**: Add digital signatures to files
 - **Verify**: Validate existing signatures
+- **Timestamp**: Verify timestamps in signed files (NEW in 1.1)
 - **Unsign**: Remove signatures (Windows binaries)
 - **Resign**: Replace signatures with new certificates
 
@@ -93,6 +95,13 @@ make
 ./codesign-toolkit verify -in your-app-signed.exe
 ./codesign-toolkit verify -in your-app-signed.jar
 ./codesign-toolkit verify -in your-app-signed.air
+```
+
+### 5. Check Timestamps (NEW in 1.1)
+```bash
+./codesign-toolkit timestamp -in your-app-signed.exe
+./codesign-toolkit timestamp -in your-app-signed.jar
+./codesign-toolkit timestamp -in your-app-signed.air
 ```
 
 ## Technical Implementation
@@ -219,6 +228,7 @@ sudo make install
 ### Resources
 - **README.md**: Quick start and basic usage
 - **docs/CODE_SIGNING_GUIDE.md**: Comprehensive guide
+- **docs/TIMESTAMP_GUIDE.md**: Timestamp server guide (NEW in 1.1)
 - **examples/**: Working examples
 - **tests/**: Test suite and validation
 
@@ -227,6 +237,20 @@ sudo make install
 2. Run the test suite
 3. Review example usage
 4. Create an issue on the repository
+
+## What's New in Version 1.1
+
+### Enhanced Timestamp Support
+- **New timestamp command**: Verify timestamps in any supported signed file
+- **Improved timestamp integration**: Better timestamp handling across all file types
+- **Comprehensive documentation**: New TIMESTAMP_GUIDE.md with best practices
+- **Enhanced examples**: Updated examples to demonstrate timestamp functionality
+
+### Technical Improvements
+- Enhanced AIR file signing with better timestamp support
+- Improved Apple package signing with timestamp integration
+- Better error handling for timestamp server failures
+- More detailed timestamp verification output
 
 ## Conclusion
 

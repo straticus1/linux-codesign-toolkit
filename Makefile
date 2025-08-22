@@ -1,4 +1,4 @@
-# Linux Code Signing Toolkit 1.0 Makefile
+# Linux Code Signing Toolkit 1.1 - Makefile
 # Designed and Developed by: Ryan Coleman <coleman.ryan@gmail.com>
 
 .PHONY: all clean install uninstall deps osslsigncode test
@@ -7,7 +7,7 @@
 PREFIX ?= /usr/local
 BINDIR = $(PREFIX)/bin
 DATADIR = $(PREFIX)/share/codesign-toolkit
-VERSION = 1.0
+VERSION = 1.1
 
 # Build targets
 all: deps codesign-toolkit
@@ -70,7 +70,7 @@ clean:
 
 # Show help
 help:
-	@echo "Linux Code Signing Toolkit 1.0"
+	@echo "Linux Code Signing Toolkit 1.1"
 	@echo ""
 	@echo "Available targets:"
 	@echo "  all          - Build everything (default)"
